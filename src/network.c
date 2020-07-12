@@ -196,20 +196,20 @@ void forward_network(network net)
         net.index = i;
         /// 获取当前层
         layer l = net.layers[i];
-        /// 如果当前层的l.delta已经动态分配了内存，则调用fill_cpu()函数，将其所有元素的值初始化为0
+        /// 如果当前层的l.delta已经动态分配了内存，则调用fill_cpu()函数，将其所有元素的值初始化为0，保证每次进入前向网络delta都为0
         if(l.delta){
             /// 第一个参数为l.delta的元素个数，第二个参数为初始化值，为0
             fill_cpu(l.outputs * l.batch, 0, l.delta, 1);
         }
 
         /// 前向传播（前向推理）：完成l层的前向推理
-        l.forward(l, net);
+        l.forward(l, net);//yolo3完成前向推理后，yolo层会计算出delta的值
 
         /// 完成某一层的推理时，置网络的输入为当前层的输出（这将成为下一层网络的输入），要注意的是，此处是直接更改指针变量net.input本身的值，
         /// 也就是此处是通过改变指针net.input所指的地址来改变其中所存内容的值，并不是直接改变其所指的内容而指针所指的地址没变，
         /// 所以在退出forward_network()函数后，其对net.input的改变都将失效，net.input将回到进入forward_network()之前时的值。
         net.input = l.output;
-        if(l.truth) {
+        if(l.truth) {//truth这个值在yolo3中没有
             net.truth = l.output;
         }
     }
@@ -297,7 +297,7 @@ float train_network_datum(network net)
     forward_network(net);
     backward_network(net);
     float error = *net.cost;
-    if(((*net.seen)/net.batch)%net.subdivisions == 0) update_network(net);
+    if(((*net.seen)/net.batch)%net.subdivisions == 0) update_network(net);//每subdivisions轮更新一次网络
     return error;
 }
 

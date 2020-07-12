@@ -591,11 +591,11 @@ void forward_convolutional_layer(convolutional_layer l, network net)
 void backward_convolutional_layer(convolutional_layer l, network net)
 {
     int i;
-    int m = l.n;                // 卷积核个数
+    int m = l.n;                // 卷积核个数，yolo3最后的卷积层255个核。以下都按yolo3最后一层卷积来
     // 每一个卷积核元素个数（包括l.c（l.c为该层网络接受的输入图片的通道数）个通道上的卷积核元素个数总数，比如卷积核尺寸为3*3,
     // 输入图片有3个通道，因为要同时作用于输入的3个通道上，所以实际上这个卷积核是一个立体的，共有3*3*3=27个元素，这些元素都是要训练的参数）
-    int n = l.size*l.size*l.c;
-    int k = l.out_w*l.out_h;    // 每张输出特征图的元素个数：out_w，out_h是输出特征图的宽高
+    int n = l.size*l.size*l.c; //1*1*256
+    int k = l.out_w*l.out_h;    // 每张输出特征图的元素个数：out_w，out_h是输出特征图的宽高，13*13
 
     // 计算当前层激活函数对加权输入的导数值并乘以l.delta相应元素，从而彻底完成当前层敏感度图的计算，得到当前层的敏感度图l.delta。
     // l.output存储了该层网络的所有输出：该层网络接受一个batch的输入图片，其中每张图片经卷积处理后得到的特征图尺寸为：l.out_w,l.out_h，
@@ -617,7 +617,7 @@ void backward_convolutional_layer(convolutional_layer l, network net)
         // 计算偏置的更新值：每个卷积核都有一个偏置，偏置的更新值也即误差函数对偏置的导数，这个导数的计算很简单，实际所有的导数已经求完了，都存储在l.delta中，
         // 接下来只需把l.delta中对应同一个卷积核的项加起来就可以（卷积核在图像上逐行逐列跨步移动做卷积，每个位置处都有一个输出，共有l.out_w*l.out_h个，
         // 这些输出都与同一个偏置关联，因此将l.delta中对应同一个卷积核的项加起来即得误差函数对这个偏置的导数）
-        backward_bias(l.bias_updates, l.delta, l.batch, l.n, k);
+        backward_bias(l.bias_updates, l.delta, l.batch, l.n, k);//k=13*13
     }
 
     // 遍历batch中的每张照片，对于l.delta来说，每张照片是分开存的，因此其维度会达到：l.batch*l.n*l.out_w*l.out_h，

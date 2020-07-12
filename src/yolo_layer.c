@@ -238,12 +238,12 @@ void forward_yolo_layer(const layer l, network net)
         }
     }
     *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);//简单求平方和
-    printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d\n", net.index, avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, recall75/count, count);//按https://zhuanlan.zhihu.com/p/49556105的说法，yolo层在79层、91层、106层各运行了一次，这应该是每层的输出
+    printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d\n", net.index, avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, recall75/count, count);//参考https://zhuanlan.zhihu.com/p/49556105的网络结构
 }
 
 void backward_yolo_layer(const layer l, network net)
 {
-   axpy_cpu(l.batch*l.inputs, 1, l.delta, 1, net.delta, 1);
+   axpy_cpu(l.batch*l.inputs, 1, l.delta, 1, net.delta, 1);//yolo层反向时简单的把delta拷贝到上一层，没有对激活函数求导，是因为这层没有参数？？还是最后一层求导意义不大？？
 }
 
 void correct_yolo_boxes(detection *dets, int n, int w, int h, int netw, int neth, int relative)
