@@ -93,17 +93,17 @@ box get_yolo_box(float *x, float *biases, int n, int index, int i, int j, int lw
 float delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i, int j, int lw, int lh, int w, int h, float *delta, float scale, int stride)
 {
     box pred = get_yolo_box(x, biases, n, index, i, j, lw, lh, w, h, stride);
-    float iou = box_iou(pred, truth);
+    float iou = box_iou(pred, truth);//预测的和真实的都是归一化后的值
 
     float tx = (truth.x*lw - i);
     float ty = (truth.y*lh - j);
     float tw = log(truth.w*w / biases[2*n]);
-    float th = log(truth.h*h / biases[2*n + 1]);
+    float th = log(truth.h*h / biases[2*n + 1]);//把值恢复到和特征图差不多的情况
 
     delta[index + 0*stride] = scale * (tx - x[index + 0*stride]);
     delta[index + 1*stride] = scale * (ty - x[index + 1*stride]);
     delta[index + 2*stride] = scale * (tw - x[index + 2*stride]);
-    delta[index + 3*stride] = scale * (th - x[index + 3*stride]);
+    delta[index + 3*stride] = scale * (th - x[index + 3*stride]);//这个比例大概也就一点几的样子？
     return iou;
 }
 
@@ -111,12 +111,12 @@ float delta_yolo_box(box truth, float *x, float *biases, int n, int index, int i
 void delta_yolo_class(float *output, float *delta, int index, int class, int classes, int stride, float *avg_cat)
 {
     int n;
-    if (delta[index]){
-        delta[index + stride*class] = 1 - output[index + stride*class];
+    if (delta[index]){//如果预测的第一个类别有delta值
+        delta[index + stride*class] = 1 - output[index + stride*class];//那么就算出预测对应的类还差多少可以到1，将其作为delta，也就离精准预测预测还差多少，stride刚好是跳到预测的下一个类的位置
         if(avg_cat) *avg_cat += output[index + stride*class];
         return;
     }
-    for(n = 0; n < classes; ++n){
+    for(n = 0; n < classes; ++n){//classes=80,如果第一个类没有delta，就挨个类处理，
         delta[index + stride*n] = ((n == class)?1 : 0) - output[index + stride*n];
         if(n == class && avg_cat) *avg_cat += output[index + stride*n];
     }
@@ -184,27 +184,27 @@ void forward_yolo_layer(const layer l, network net)
                     if (best_iou > l.truth_thresh) {//truth_thresh为1？那下面这段应该没打算执行，
                         l.delta[obj_index] = 1 - l.output[obj_index];
 
-                        int class = net.truth[best_t*(4 + 1) + b*l.truths + 4];
+                        int class = net.truth[best_t*(4 + 1) + b*l.truths + 4];//拿到最接近的真实框所指的类别
                         if (l.map) class = l.map[class];//map这个值也没有
-                        int class_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 4 + 1);
-                        delta_yolo_class(l.output, l.delta, class_index, class, l.classes, l.w*l.h, 0);
-                        box truth = float_to_box(net.truth + best_t*(4 + 1) + b*l.truths, 1);
-                        delta_yolo_box(truth, l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.delta, (2-truth.w*truth.h), l.w*l.h);
+                        int class_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 4 + 1);//获取预测的第一个类别的地址。
+                        delta_yolo_class(l.output, l.delta, class_index, class, l.classes, l.w*l.h, 0);//分类误差
+                        box truth = float_to_box(net.truth + best_t*(4 + 1) + b*l.truths, 1);//拿出真实值框的位置
+                        delta_yolo_box(truth, l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.delta, (2-truth.w*truth.h), l.w*l.h);//这个函数会把预测输出的每个框与真实值的差作为delta值，系数是(2-truth.w*truth.h)
                     }
                 }
             }
-        }
+        }//逐方格的循环结束了
         for(t = 0; t < l.max_boxes; ++t){
-            box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);
+            box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);//再次取每个每个图的矩形框真实值
 
             if(!truth.x) break;
             float best_iou = 0;
             int best_n = 0;
             i = (truth.x * l.w);
-            j = (truth.y * l.h);
+            j = (truth.y * l.h);//真实矩形框在特征图上的位置
             box truth_shift = truth;
             truth_shift.x = truth_shift.y = 0;
-            for(n = 0; n < l.total; ++n){
+            for(n = 0; n < l.total; ++n){//total=9
                 box pred = {0};
                 pred.w = l.biases[2*n]/net.w;
                 pred.h = l.biases[2*n+1]/net.h;
