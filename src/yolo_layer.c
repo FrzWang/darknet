@@ -117,7 +117,7 @@ void delta_yolo_class(float *output, float *delta, int index, int class, int cla
         return;
     }
     for(n = 0; n < classes; ++n){//classes=80,如果第一个类没有delta，就挨个类处理，
-        delta[index + stride*n] = ((n == class)?1 : 0) - output[index + stride*n];
+        delta[index + stride*n] = ((n == class)?1 : 0) - output[index + stride*n];//负的也没关系，反正要求平方
         if(n == class && avg_cat) *avg_cat += output[index + stride*n];
     }
 }
@@ -158,12 +158,12 @@ void forward_yolo_layer(const layer l, network net)
     int count = 0;
     int class_count = 0;
     *(l.cost) = 0;
-    for (b = 0; b < l.batch; ++b) {//b指第几张图
+    for (b = 0; b < l.batch; ++b) {//b指第几张图，下面第一个大循环逐个方格的方法在这个训练阶段已经没用了。
         for (j = 0; j < l.h; ++j) {//j指图片第几行
             for (i = 0; i < l.w; ++i) {//i指某行的第i个元素
                 for (n = 0; n < l.n; ++n) {//某个置信框
                     int box_index = entry_index(l, b, n*l.w*l.h + j*l.w + i, 0);//取图片某个方格预测的某个置信框的x值起点
-                    box pred = get_yolo_box(l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.w*l.h);//net.w=608，biases没更新的话是0.5。最终得到的预测框与yolo2介绍的公式一致，并经过归一化
+                    box pred = get_yolo_box(l.output, l.biases, l.mask[n], box_index, i, j, l.w, l.h, net.w, net.h, l.w*l.h);//net.w=608，biases在parser.c中更新成先验框的值。最终得到的预测框与yolo2介绍的公式一致，并经过归一化
                     float best_iou = 0;
                     int best_t = 0;
                     for(t = 0; t < l.max_boxes; ++t){
@@ -193,7 +193,7 @@ void forward_yolo_layer(const layer l, network net)
                     }
                 }
             }
-        }//逐方格的循环结束了
+        }//逐方格的循环结束了，下面是精准指定框求误差的阶段
         for(t = 0; t < l.max_boxes; ++t){
             box truth = float_to_box(net.truth + t*(4 + 1) + b*l.truths, 1);//再次取每个每个图的矩形框真实值
 
@@ -207,27 +207,27 @@ void forward_yolo_layer(const layer l, network net)
             for(n = 0; n < l.total; ++n){//total=9
                 box pred = {0};
                 pred.w = l.biases[2*n]/net.w;
-                pred.h = l.biases[2*n+1]/net.h;
+                pred.h = l.biases[2*n+1]/net.h;//这里biases存了先验框的尺寸
                 float iou = box_iou(pred, truth_shift);
                 if (iou > best_iou){
                     best_iou = iou;
-                    best_n = n;
+                    best_n = n;//找到与某个真实值尺寸最接近的先验框，不考虑位置上的差别
                 }
             }
 
-            int mask_n = int_index(l.mask, best_n, l.n);
-            if(mask_n >= 0){
-                int box_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 0);
-                float iou = delta_yolo_box(truth, l.output, l.biases, best_n, box_index, i, j, l.w, l.h, net.w, net.h, l.delta, (2-truth.w*truth.h), l.w*l.h);
+            int mask_n = int_index(l.mask, best_n, l.n);//n=3,3个yolo曾每层管3个先验框，可能存在在该mask没找到先验框的情况。
+            if(mask_n >= 0){//找到了先验框
+                int box_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 0);//这里i,j都是真实值在特征图上的方格位置，mask_n是指当前yolo层处理的第几个先验框，最后拿到的地址符合两个条件：真实值尺寸与先验框最相似，负责检测的x，y是真实值给的
+                float iou = delta_yolo_box(truth, l.output, l.biases, best_n, box_index, i, j, l.w, l.h, net.w, net.h, l.delta, (2-truth.w*truth.h), l.w*l.h);//再次运行了上一个循环里没有执行的求预测边框误差函数，上次的循环只要iou能达到一定标准就可以列入误差，这次精准要求了预测方格的位置和先验框的尺寸。也许是第二阶段的训练？
 
                 int obj_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4);
                 avg_obj += l.output[obj_index];
-                l.delta[obj_index] = 1 - l.output[obj_index];
+                l.delta[obj_index] = 1 - l.output[obj_index];//训练到这一步可能就是要将这个预测位置的值认为是目标，这里的1估计是论文里的IOU？
 
                 int class = net.truth[t*(4 + 1) + b*l.truths + 4];
-                if (l.map) class = l.map[class];
+                if (l.map) class = l.map[class];//map在yolo3没有
                 int class_index = entry_index(l, b, mask_n*l.w*l.h + j*l.w + i, 4 + 1);
-                delta_yolo_class(l.output, l.delta, class_index, class, l.classes, l.w*l.h, &avg_cat);
+                delta_yolo_class(l.output, l.delta, class_index, class, l.classes, l.w*l.h, &avg_cat);//再次求类别误差
 
                 ++count;
                 ++class_count;
@@ -237,8 +237,8 @@ void forward_yolo_layer(const layer l, network net)
             }
         }
     }
-    *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);
-    printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d\n", net.index, avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, recall75/count, count);
+    *(l.cost) = pow(mag_array(l.delta, l.outputs * l.batch), 2);//简单求平方和
+    printf("Region %d Avg IOU: %f, Class: %f, Obj: %f, No Obj: %f, .5R: %f, .75R: %f,  count: %d\n", net.index, avg_iou/count, avg_cat/class_count, avg_obj/count, avg_anyobj/(l.w*l.h*l.n*l.batch), recall/count, recall75/count, count);//按https://zhuanlan.zhihu.com/p/49556105的说法，yolo层在79层、91层、106层各运行了一次，这应该是每层的输出
 }
 
 void backward_yolo_layer(const layer l, network net)
