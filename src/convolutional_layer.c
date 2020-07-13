@@ -617,7 +617,7 @@ void backward_convolutional_layer(convolutional_layer l, network net)
         // 计算偏置的更新值：每个卷积核都有一个偏置，偏置的更新值也即误差函数对偏置的导数，这个导数的计算很简单，实际所有的导数已经求完了，都存储在l.delta中，
         // 接下来只需把l.delta中对应同一个卷积核的项加起来就可以（卷积核在图像上逐行逐列跨步移动做卷积，每个位置处都有一个输出，共有l.out_w*l.out_h个，
         // 这些输出都与同一个偏置关联，因此将l.delta中对应同一个卷积核的项加起来即得误差函数对这个偏置的导数）
-        backward_bias(l.bias_updates, l.delta, l.batch, l.n, k);//k=13*13
+        backward_bias(l.bias_updates, l.delta, l.batch, l.n, k);//k=13*13，n=255，总共255个核，每个核计算一个偏置更新值
     }
 
     // 遍历batch中的每张照片，对于l.delta来说，每张照片是分开存的，因此其维度会达到：l.batch*l.n*l.out_w*l.out_h，
@@ -653,9 +653,9 @@ void backward_convolutional_layer(convolutional_layer l, network net)
         // GEneral Matrix to Matrix Multiplication
         // 此处在im2col_cpu操作基础上，利用矩阵乘法c=alpha*a*b+beta*c完成对图像卷积的操作；
         // 0表示不对输入a进行转置，1表示对输入b进行转置；
-        // m是输入a,c的行数，具体含义为卷积核的个数(l.n)；
-        // n是输入b,c的列数，具体含义为每个卷积核元素个数乘以输入图像的通道数(l.size*l.size*l.c)；
-        // k是输入a的列数也是b的行数，具体含义为每个输出特征图的元素个数（l.out_w*l.out_h）；
+        // m是输入a,c的行数，具体含义为卷积核的个数(l.n)；255
+        // n是输入b,c的列数，具体含义为每个卷积核元素个数乘以输入图像的通道数(l.size*l.size*l.c)；256
+        // k是输入a的列数也是b的行数，具体含义为每个输出特征图的元素个数（l.out_w*l.out_h）；13*13=169
         // a,b,c即为三个参与运算的矩阵（用一维数组存储）,alpha=beta=1为常系数；
         // a为l.delta的一大行。l.delta为本层所有输出元素（包含整个batch中每张图片的所有输出特征图）关于加权输入的导数（即激活函数的导数值）集合,
         // 元素个数为l.batch * l.out_h * l.out_w * l.out_c（l.out_c = l.n），按行存储，共有l.batch行，l.out_c * l.out_h * l.out_w列，

@@ -213,7 +213,7 @@ void forward_network(network net)
             net.truth = l.output;
         }
     }
-    calc_network_cost(net);
+    calc_network_cost(net);//只是简单把有cost的层加起来作平均
 }
 
 void update_network(network net)
